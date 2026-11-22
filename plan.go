@@ -25,15 +25,16 @@ type change struct {
 	Live           liveRule
 }
 
-func (c change) String() string {
-	switch c.Kind {
-	case addRule:
-		return fmt.Sprintf("  + %s: %s", c.Rule, c.Rule.Action)
-	case updateRule:
-		return fmt.Sprintf("  ~ %s: %s -> %s", c.Rule, c.PreviousAction, c.Rule.Action)
-	default:
-		return fmt.Sprintf("  - %s: %s", c.Rule, c.Rule.Action)
+func (c change) description() string {
+	if c.Kind == updateRule {
+		return fmt.Sprintf("%s: %s -> %s", c.Rule, c.PreviousAction, c.Rule.Action)
 	}
+	return fmt.Sprintf("%s: %s", c.Rule, c.Rule.Action)
+}
+
+func (c change) String() string {
+	symbols := map[changeKind]string{addRule: "+", updateRule: "~", removeRule: "-"}
+	return fmt.Sprintf("  %s %s", symbols[c.Kind], c.description())
 }
 
 func readRuleset(path string) (Ruleset, error) {
@@ -76,23 +77,8 @@ func validateRuleset(ruleset Ruleset) error {
 			}
 			seen[rule.key()] = true
 		}
-		for _, protocol := range []string{"tcp", "udp"} {
-			catchAll := ruleKey{Protocol: protocol, Port: 0, Source: "any"}
-			if !hasDropRule(ruleset[ip].Rules, catchAll) {
-				return fmt.Errorf("%s: refusing a ruleset without the catch-all %s drop rule (port 0, source any, action drop)", ip, protocol)
-			}
-		}
 	}
 	return nil
-}
-
-func hasDropRule(rules []Rule, key ruleKey) bool {
-	for _, rule := range rules {
-		if rule.key() == key && rule.Action == "drop" {
-			return true
-		}
-	}
-	return false
 }
 
 func planChanges(desired Ruleset, live map[string][]liveRule) ([]change, error) {
@@ -136,7 +122,13 @@ func planChanges(desired Ruleset, live map[string][]liveRule) ([]change, error) 
 		sort.Slice(extra, func(i, j int) bool { return extra[i].Rule.String() < extra[j].Rule.String() })
 		removes = append(removes, extra...)
 	}
-	return append(append(adds, updates...), removes...), nil
+	changes := append(append(adds, updates...), removes...)
+	for _, change := range changes {
+		if change.Kind != addRule && isCatchAll(change.Rule) {
+			return nil, fmt.Errorf("%s: refusing to %s catch-all rule %s, change it in the portal instead", change.IP, change.Kind, change.description())
+		}
+	}
+	return changes, nil
 }
 
 func (c *client) plan(desired Ruleset) ([]change, error) {

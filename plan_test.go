@@ -129,21 +129,73 @@ func TestPlanChangesLeavesUnlistedIPsAlone(t *testing.T) {
 	}
 }
 
+func TestPlanChangesProtectsCatchAllRules(t *testing.T) {
+	liveHolepunch := liveRule{Source: "0", Port: "0", Protocol: "udp", Action: "udp-holepunch"}
+
+	tests := []struct {
+		name    string
+		desired []Rule
+		live    []liveRule
+		wantErr string
+	}{
+		{
+			name:    "removing a catch-all drop",
+			desired: catchAllDrops[:1],
+			live:    withLiveDrops(),
+			wantErr: "refusing to remove catch-all rule udp all from any",
+		},
+		{
+			name:    "changing a catch-all drop to pass",
+			desired: []Rule{{Port: 0, Protocol: "tcp", Action: "pass", Source: "any"}, catchAllDrops[1]},
+			live:    withLiveDrops(),
+			wantErr: "refusing to update catch-all rule tcp all from any",
+		},
+		{
+			name:    "changing a non-drop catch-all",
+			desired: []Rule{{Port: 0, Protocol: "udp", Action: "drop", Source: "any"}},
+			live:    []liveRule{liveHolepunch},
+			wantErr: "refusing to update catch-all rule udp all from any",
+		},
+		{
+			name:    "keeping a non-drop catch-all",
+			desired: []Rule{{Port: 0, Protocol: "udp", Action: "udp-holepunch", Source: "any"}},
+			live:    []liveRule{liveHolepunch},
+		},
+		{
+			name:    "adding catch-all drops",
+			desired: withDrops(),
+			live:    nil,
+		},
+		{
+			name:    "removing a source-specific port 0 rule",
+			desired: withDrops(),
+			live:    withLiveDrops(liveRule{Source: "10.0.0.0/8", Port: "0", Protocol: "tcp", Action: "pass"}),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := planChanges(Ruleset{ip: {Rules: test.desired}}, map[string][]liveRule{ip: test.live})
+			switch {
+			case test.wantErr == "" && err != nil:
+				t.Fatalf("unexpected error: %v", err)
+			case test.wantErr != "" && (err == nil || !strings.Contains(err.Error(), test.wantErr)):
+				t.Fatalf("got error %v, want one containing %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateRuleset(t *testing.T) {
 	tests := []struct {
 		name    string
 		rules   []Rule
 		wantErr string
 	}{
-		{name: "both catch-all drops", rules: withDrops()},
-		{name: "missing tcp drop", rules: catchAllDrops[1:], wantErr: "catch-all tcp drop"},
-		{name: "missing udp drop", rules: catchAllDrops[:1], wantErr: "catch-all udp drop"},
-		{name: "no rules", rules: nil, wantErr: "catch-all tcp drop"},
-		{
-			name:    "catch-all set to pass",
-			rules:   []Rule{{Port: 0, Protocol: "tcp", Action: "pass", Source: "any"}, catchAllDrops[1]},
-			wantErr: "catch-all tcp drop",
-		},
+		{name: "catch-all drops", rules: withDrops()},
+		{name: "no catch-all rules", rules: []Rule{{Port: 25565, Protocol: "tcp", Action: "pass"}}},
+		{name: "no rules", rules: nil},
+		{name: "invalid source", rules: withDrops(Rule{Port: 22, Protocol: "tcp", Action: "pass", Source: "nope"}), wantErr: "invalid source"},
 		{
 			name:    "duplicate rule",
 			rules:   withDrops(Rule{Port: 80, Protocol: "tcp", Action: "pass", Source: "any"}, Rule{Port: 80, Protocol: "TCP", Action: "drop", Source: ""}),

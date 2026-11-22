@@ -30,8 +30,7 @@ Use a portal sub-user without 2FA. Give it only the permissions you need: `rules
 
 ## Safety
 
-- `set` and `delete` never touch the catch-all drop rules (port 0, source any).
-- `plan` and `apply` refuse a ruleset where an IP lacks those catch-all drops.
+- Catch-all rules (port 0, source any) can only be added, never changed or removed. `set` and `delete` refuse to touch them, and `plan` and `apply` refuse a ruleset that would change or remove one. Change them in the portal instead.
 - `apply` adds rules first and removes them last. It never replaces all of an IP's rules at once, so traffic isn't dropped mid-change.
 - `apply` only touches IPs listed in the file.
 

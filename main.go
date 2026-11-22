@@ -25,7 +25,7 @@ const usage = `usage: cosmic <command> [flags]
                         remove one rule
 
 Port 0 means every port. Actions include pass, drop, minecraft-java and minecraft-bedrock.
-set and delete refuse to touch the catch-all drop rules (port 0, source any).
+Catch-all rules (port 0, source any) can be added but never changed or removed.
 Credentials come from COSMIC_USERNAME and COSMIC_PASSWORD.
 ips and rules print a table on a terminal and JSON otherwise. Pass --json to force JSON.
 The JSON from "cosmic rules" is the format plan and apply read.

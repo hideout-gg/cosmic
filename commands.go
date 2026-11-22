@@ -108,12 +108,12 @@ func runPlan(client *client, out io.Writer, desired Ruleset, shouldApply bool) e
 }
 
 func runSet(client *client, out io.Writer, ip string, rule Rule) error {
-	if isCatchAll(rule) {
-		return errors.New("refusing to change a catch-all rule (port 0, source any)")
-	}
 	existing, found, err := client.findLiveRule(ip, rule.key())
 	if err != nil {
 		return err
+	}
+	if found && isCatchAll(rule) && existing.Action != rule.Action {
+		return errors.New("refusing to change a catch-all rule (port 0, source any), change it in the portal instead")
 	}
 	if !found {
 		if err := client.apply([]change{{IP: ip, Kind: addRule, Rule: rule}}); err != nil {
@@ -136,7 +136,7 @@ func runSet(client *client, out io.Writer, ip string, rule Rule) error {
 
 func runDelete(client *client, out io.Writer, ip string, rule Rule) error {
 	if isCatchAll(rule) {
-		return errors.New("refusing to delete a catch-all rule (port 0, source any)")
+		return errors.New("refusing to delete a catch-all rule (port 0, source any), change it in the portal instead")
 	}
 	existing, found, err := client.findLiveRule(ip, rule.key())
 	if err != nil {
