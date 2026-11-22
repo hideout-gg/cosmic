@@ -45,7 +45,7 @@ func runRules(client *client, out io.Writer, ips []string, asJSON bool) error {
 		return err
 	}
 	if asJSON {
-		return writeJSON(out, ruleset)
+		return writeRuleset(out, ruleset)
 	}
 	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(table, "IP\tLABEL\tPROTOCOL\tPORT\tSOURCE\tACTION")
