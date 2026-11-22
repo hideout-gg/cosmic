@@ -19,12 +19,13 @@ const usage = `usage: cosmic <command> [flags]
   attacks [ip]          show ongoing attacks, or one IP's recent attacks (--hours, default 24)
   plan -f rules.json    show what apply would change
   apply -f rules.json   make the live firewall match rules.json
-  set <ip> <protocol> <port> <action> [--source cidr]
+  set <ip> <protocol> <port> <action> [--source ip]
                         add a rule, or change the action of an existing one
-  delete <ip> <protocol> <port> [--source cidr]
+  delete <ip> <protocol> <port> [--source ip]
                         remove one rule
 
-Port 0 means every port. Actions include pass, drop, minecraft-java and minecraft-bedrock.
+Port 0 means every port. Actions include pass, drop, cloudflare-only, minecraft-java and minecraft-bedrock.
+A source is a single IP or any. Cosmic does not accept ranges.
 Catch-all rules (port 0, source any) can be added but never changed or removed.
 Credentials come from COSMIC_USERNAME and COSMIC_PASSWORD.
 ips and rules print a table on a terminal and JSON otherwise. Pass --json to force JSON.
@@ -63,7 +64,7 @@ func parseCommand(args []string, out io.Writer) (commandFunc, error) {
 	forceJSON := flags.Bool("json", false, "print JSON")
 	file := flags.String("f", "", "ruleset file")
 	hours := flags.Int("hours", 24, "attack history window in hours")
-	source := flags.String("source", "any", "source IP or CIDR")
+	source := flags.String("source", "any", "source IP")
 	positional, err := parseInterleaved(flags, args[1:])
 	if err != nil {
 		return nil, err
@@ -111,7 +112,7 @@ func parseCommand(args []string, out io.Writer) (commandFunc, error) {
 
 	case "set":
 		if len(positional) != 4 {
-			return nil, errors.New("usage: cosmic set <ip> <protocol> <port> <action> [--source cidr]")
+			return nil, errors.New("usage: cosmic set <ip> <protocol> <port> <action> [--source ip]")
 		}
 		ip, rule, err := ruleFromArgs(positional[0], positional[1], positional[2], positional[3], *source)
 		if err != nil {
@@ -121,7 +122,7 @@ func parseCommand(args []string, out io.Writer) (commandFunc, error) {
 
 	case "delete":
 		if len(positional) != 3 {
-			return nil, errors.New("usage: cosmic delete <ip> <protocol> <port> [--source cidr]")
+			return nil, errors.New("usage: cosmic delete <ip> <protocol> <port> [--source ip]")
 		}
 		ip, rule, err := ruleFromArgs(positional[0], positional[1], positional[2], "", *source)
 		if err != nil {
@@ -180,10 +181,7 @@ func validSource(source string) bool {
 	if source == "any" {
 		return true
 	}
-	if _, err := netip.ParseAddr(source); err == nil {
-		return true
-	}
-	_, err := netip.ParsePrefix(source)
+	_, err := netip.ParseAddr(source)
 	return err == nil
 }
 

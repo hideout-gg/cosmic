@@ -103,10 +103,32 @@ func (c *client) send(method, path string, body, out any) error {
 		}
 		return fmt.Errorf("%s %s: %s", method, path, resp.Status)
 	}
+	if err := rejection(data); err != nil {
+		return fmt.Errorf("%s %s: %w", method, path, err)
+	}
 	if out == nil {
 		return nil
 	}
 	return json.Unmarshal(data, out)
+}
+
+func rejection(data []byte) error {
+	var outcome struct {
+		Success *bool           `json:"success"`
+		Error   string          `json:"error"`
+		Result  json.RawMessage `json:"result"`
+	}
+	if json.Unmarshal(data, &outcome) != nil || outcome.Success == nil || *outcome.Success {
+		return nil
+	}
+	if outcome.Error != "" {
+		return errors.New(outcome.Error)
+	}
+	var message string
+	if json.Unmarshal(outcome.Result, &message) == nil && message != "" {
+		return errors.New(message)
+	}
+	return errors.New("request rejected")
 }
 
 func (c *client) login() error {

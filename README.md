@@ -24,6 +24,8 @@ cosmic plan -f rules.json               # diff a ruleset against live
 cosmic apply -f rules.json              # make live match the ruleset
 ```
 
+A rule's source is a single IP or `any`, because Cosmic doesn't accept ranges. To allow only Cloudflare, use the `cloudflare-only` action instead of listing Cloudflare's ranges.
+
 Output is a table on a terminal and JSON otherwise, so scripts and agents get JSON by default. Pass `--json` to force it.
 
 Use a portal sub-user without 2FA. Give it only the permissions you need: `rules.view` for reading, plus the add, edit, delete and replace permissions for writing. The login session is cached in your user cache directory, so repeated calls don't log in every time.

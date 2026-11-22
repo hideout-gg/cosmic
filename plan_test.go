@@ -86,9 +86,9 @@ func TestPlanChanges(t *testing.T) {
 		},
 		{
 			name:    "rules with different sources are separate",
-			desired: withDrops(java, Rule{Port: 25565, Protocol: "tcp", Action: "pass", Source: "10.0.0.0/8"}),
+			desired: withDrops(java, Rule{Port: 25565, Protocol: "tcp", Action: "pass", Source: "198.51.100.7"}),
 			live:    withLiveDrops(liveJava),
-			want:    []string{"add tcp 25565 from 10.0.0.0/8"},
+			want:    []string{"add tcp 25565 from 198.51.100.7"},
 		},
 		{
 			name:    "adds come before updates and removes",
@@ -169,7 +169,7 @@ func TestPlanChangesProtectsCatchAllRules(t *testing.T) {
 		{
 			name:    "removing a source-specific port 0 rule",
 			desired: withDrops(),
-			live:    withLiveDrops(liveRule{Source: "10.0.0.0/8", Port: "0", Protocol: "tcp", Action: "pass"}),
+			live:    withLiveDrops(liveRule{Source: "198.51.100.7", Port: "0", Protocol: "tcp", Action: "pass"}),
 		},
 	}
 
@@ -196,6 +196,7 @@ func TestValidateRuleset(t *testing.T) {
 		{name: "no catch-all rules", rules: []Rule{{Port: 25565, Protocol: "tcp", Action: "pass"}}},
 		{name: "no rules", rules: nil},
 		{name: "invalid source", rules: withDrops(Rule{Port: 22, Protocol: "tcp", Action: "pass", Source: "nope"}), wantErr: "invalid source"},
+		{name: "source range", rules: withDrops(Rule{Port: 22, Protocol: "tcp", Action: "pass", Source: "198.51.100.0/24"}), wantErr: "invalid source"},
 		{
 			name:    "duplicate rule",
 			rules:   withDrops(Rule{Port: 80, Protocol: "tcp", Action: "pass", Source: "any"}, Rule{Port: 80, Protocol: "TCP", Action: "drop", Source: ""}),
@@ -248,12 +249,38 @@ func TestLiveRulePath(t *testing.T) {
 	}{
 		{rule: liveRule{Source: "0", Port: "25565", Protocol: "tcp"}, want: "/api/rules/" + ip + "/25565/tcp/0"},
 		{rule: liveRule{Source: "", Port: "25565", Protocol: "tcp"}, want: "/api/rules/" + ip + "/25565/tcp"},
-		{rule: liveRule{Source: "10.0.0.0/8", Port: "22", Protocol: "tcp"}, want: "/api/rules/" + ip + "/22/tcp/10.0.0.0%2F8"},
+		{rule: liveRule{Source: "198.51.100.7", Port: "22", Protocol: "tcp"}, want: "/api/rules/" + ip + "/22/tcp/198.51.100.7"},
 	}
 	for _, test := range tests {
 		t.Run(test.want, func(t *testing.T) {
 			if got := test.rule.path(ip); got != test.want {
 				t.Errorf("got %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRejection(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{name: "success", body: `{"success":true,"result":[]}`},
+		{name: "no success field", body: `{"ips":[]}`},
+		{name: "array body", body: `[]`},
+		{name: "rejected with result message", body: `{"success":false,"result":"Incorrect prefix for source IP (must be a single IP)."}`, wantErr: "Incorrect prefix"},
+		{name: "rejected with error field", body: `{"success":false,"error":"Rule limit reached"}`, wantErr: "Rule limit reached"},
+		{name: "rejected without message", body: `{"success":false}`, wantErr: "request rejected"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := rejection([]byte(test.body))
+			switch {
+			case test.wantErr == "" && err != nil:
+				t.Fatalf("unexpected error: %v", err)
+			case test.wantErr != "" && (err == nil || !strings.Contains(err.Error(), test.wantErr)):
+				t.Fatalf("got error %v, want one containing %q", err, test.wantErr)
 			}
 		})
 	}
